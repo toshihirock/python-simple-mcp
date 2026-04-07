@@ -75,6 +75,35 @@ ECS タスク定義の `image` にアーキテクチャに合ったタグを指�
 | X86_64 | `toshihirock/python-simple-mcp:amd64` |
 | ARM64 | `toshihirock/python-simple-mcp:arm64` |
 
+### ECS での利用（CDK）
+
+VPC + ALB + Fargate を CDK でデプロイできます。VPC は別スタックなので他のリソースと共有可能です。
+
+```bash
+cd cdk
+npm install
+CDK_DOCKER=finch npx cdk deploy McpVpcStack McpEcsStack --require-approval never
+```
+
+デプロイ後の確認:
+
+```bash
+MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name McpEcsStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`McpEndpoint`].OutputValue' --output text)
+
+curl -s -X POST "$MCP_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}'
+```
+
+削除:
+
+```bash
+cd cdk
+npx cdk destroy McpEcsStack McpVpcStack
+```
+
 ## Bedrock AgentCore へのデプロイ（CDK）
 
 CDK で Cognito + AgentCore Runtime を一括デプロイできます。
