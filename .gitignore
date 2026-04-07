@@ -1,1 +1,4 @@
 tmp/
+cdk/node_modules/
+cdk/dist/
+cdk/cdk.out/

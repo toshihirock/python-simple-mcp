@@ -75,7 +75,59 @@ ECS タスク定義の `image` にアーキテクチャに合ったタグを指�
 | X86_64 | `toshihirock/python-simple-mcp:amd64` |
 | ARM64 | `toshihirock/python-simple-mcp:arm64` |
 
-## Bedrock AgentCore へのデプロイ
+## Bedrock AgentCore へのデプロイ（CDK）
+
+CDK で Cognito + AgentCore Runtime を一括デプロイできます。
+
+```bash
+cd cdk
+npm install
+CDK_DOCKER=finch npx cdk deploy PythonSimpleMcpStack --require-approval never
+```
+
+Docker を使う場合は `CDK_DOCKER=finch` を省略してください。
+
+デプロイ後、CloudFormation Outputs から接続情報を取得:
+
+```bash
+export COGNITO_TOKEN_ENDPOINT=$(aws cloudformation describe-stacks --stack-name PythonSimpleMcpStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`CognitoTokenEndpoint`].OutputValue' --output text)
+export COGNITO_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name PythonSimpleMcpStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`CognitoClientId`].OutputValue' --output text)
+export COGNITO_USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name PythonSimpleMcpStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`CognitoUserPoolId`].OutputValue' --output text)
+export COGNITO_CLIENT_SECRET=$(aws cognito-idp describe-user-pool-client \
+  --user-pool-id "$COGNITO_USER_POOL_ID" --client-id "$COGNITO_CLIENT_ID" \
+  --query 'UserPoolClient.ClientSecret' --output text)
+export RUNTIME_ARN=$(aws cloudformation describe-stacks --stack-name PythonSimpleMcpStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`RuntimeArn`].OutputValue' --output text)
+```
+
+トークン取得と接続テスト:
+
+```bash
+TOKEN=$(curl -s -X POST "$COGNITO_TOKEN_ENDPOINT" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_id=$COGNITO_CLIENT_ID&client_secret=$COGNITO_CLIENT_SECRET&scope=mcp-api/access" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+ENCODED_ARN=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$RUNTIME_ARN', safe=''))")
+
+npx @modelcontextprotocol/inspector --cli \
+  "https://bedrock-agentcore.$(aws configure get region).amazonaws.com/runtimes/${ENCODED_ARN}/invocations?qualifier=DEFAULT" \
+  --transport http \
+  --header "Authorization: Bearer $TOKEN" \
+  --method tools/list
+```
+
+削除:
+
+```bash
+cd cdk
+npx cdk destroy PythonSimpleMcpStack
+```
+
+## Bedrock AgentCore へのデプロイ（CLI）
 
 ### 1. ECR に ARM64 イメージを push
 

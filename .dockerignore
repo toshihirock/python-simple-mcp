@@ -1,0 +1,5 @@
+.git
+tmp
+cdk
+__pycache__
+*.pyc
