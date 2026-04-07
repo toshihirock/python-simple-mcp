@@ -8,14 +8,11 @@ MCP (Model Context Protocol) サーバーの Docker コンテナです。
 finch build -t mcp-server .
 ```
 
-環境変数 `MCP_PORT` でリッスンポートを切り替えられます（デフォルト: 80）。
+デフォルトのリッスンポートは 8000 です（FastMCP のデフォルト）。
 
 ```bash
-# ECS 用（ポート 80）
-finch run -d --name mcp-server -p 80:80 mcp-server
-
-# Bedrock AgentCore 用（ポート 8000）
-finch run -d --name mcp-server -p 8000:8000 -e MCP_PORT=8000 mcp-server
+# ローカル起動
+finch run -d --name mcp-server -p 8000:8000 mcp-server
 ```
 
 ### 停止と削除
@@ -208,7 +205,7 @@ curl -s -N -X POST "https://bedrock-agentcore.<REGION>.amazonaws.com/runtimes/${
 ### ツール一覧の取得
 
 ```bash
-curl -s -X POST "http://127.0.0.1:80/mcp" \
+curl -s -X POST "http://127.0.0.1:8000/mcp" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 2}'
@@ -217,7 +214,7 @@ curl -s -X POST "http://127.0.0.1:80/mcp" \
 ### ツールの呼び出し（例: add_numbers）
 
 ```bash
-curl -s -X POST "http://127.0.0.1:80/mcp" \
+curl -s -X POST "http://127.0.0.1:8000/mcp" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{
