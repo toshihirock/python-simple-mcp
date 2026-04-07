@@ -8,11 +8,14 @@ MCP (Model Context Protocol) サーバーの Docker コンテナです。
 finch build -t mcp-server .
 ```
 
-デフォルトのリッスンポートは 8000 です（FastMCP のデフォルト）。
+デフォルトのリッスンポートは 8000 です。環境変数 `MCP_PORT` で変更できます。
 
 ```bash
-# ローカル起動
+# ローカル起動（デフォルト: 8000）
 finch run -d --name mcp-server -p 8000:8000 mcp-server
+
+# ECS 用（ポート 80）
+finch run -d --name mcp-server -p 80:80 -e MCP_PORT=80 mcp-server
 ```
 
 ### 停止と削除
@@ -23,6 +26,29 @@ Finch では `-d` と `--rm` を併用できないため、停止後に手動で
 ```bash
 finch stop mcp-server
 finch rm mcp-server
+```
+
+### curl での使い方（ローカル）
+
+このサーバーは `stateless_http=True` で動作しているため、`initialize` のハンドシェイクなしで直接メソッドを呼び出せます。
+
+```bash
+curl -s -X POST "http://127.0.0.1:8000/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 2}'
+```
+
+```bash
+curl -s -X POST "http://127.0.0.1:8000/mcp" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": { "name": "add_numbers", "arguments": { "a": 3, "b": 5 } },
+    "id": 3
+  }'
 ```
 
 ## Docker Hub への push（マルチプラットフォーム）
@@ -42,6 +68,7 @@ finch push toshihirock/python-simple-mcp:arm64
 ### ECS での利用
 
 ECS タスク定義の `image` にアーキテクチャに合ったタグを指定してください。
+ポート 80 で受け付ける場合は、タスク定義の `environment` に `MCP_PORT=80` を設定します。
 
 | Fargate CPU アーキテクチャ | イメージ |
 |---|---|
@@ -196,31 +223,4 @@ curl -s -N -X POST "https://bedrock-agentcore.<REGION>.amazonaws.com/runtimes/${
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0.0"}}, "id": 1}'
-```
-
-## curl での使い方（ローカル）
-
-このサーバーは `stateless_http=True` で動作しているため、`initialize` のハンドシェイクなしで直接メソッドを呼び出せます。
-
-### ツール一覧の取得
-
-```bash
-curl -s -X POST "http://127.0.0.1:8000/mcp" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 2}'
-```
-
-### ツールの呼び出し（例: add_numbers）
-
-```bash
-curl -s -X POST "http://127.0.0.1:8000/mcp" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{
-    "jsonrpc": "2.0",
-    "method": "tools/call",
-    "params": { "name": "add_numbers", "arguments": { "a": 3, "b": 5 } },
-    "id": 3
-  }'
 ```

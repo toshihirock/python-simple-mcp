@@ -4,7 +4,7 @@ import os
 from mcp.server.fastmcp import FastMCP
 from starlette.responses import JSONResponse
 
-mcp = FastMCP(host="0.0.0.0", stateless_http=True)
+mcp = FastMCP(host="0.0.0.0", port=int(os.environ.get("MCP_PORT", "8000")), stateless_http=True)
 
 @mcp.custom_route("/healthz", methods=["GET"])
 async def healthz(request):
