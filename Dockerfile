@@ -7,6 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY my_mcp_server.py .
 
-EXPOSE 80
+EXPOSE 80 8000
 
 CMD ["python", "my_mcp_server.py"]

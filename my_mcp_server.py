@@ -1,9 +1,14 @@
 # my_mcp_server.py
 
+import os
 from mcp.server.fastmcp import FastMCP
 from starlette.responses import JSONResponse
 
-mcp = FastMCP(host="0.0.0.0", port=80, stateless_http=True)
+mcp = FastMCP(host="0.0.0.0", stateless_http=True)
+
+@mcp.custom_route("/healthz", methods=["GET"])
+async def healthz(request):
+    return JSONResponse({"status": "ok"})
 
 @mcp.tool()
 def add_numbers(a: int, b: int) -> int:
