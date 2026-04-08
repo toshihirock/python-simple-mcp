@@ -104,6 +104,46 @@ cd cdk
 npx cdk destroy McpEcsStack McpVpcStack
 ```
 
+### ECS + API Key 認証での利用（CDK）
+
+API Gateway (REST API) + API Key + NLB + Fargate の構成です。VPC スタックを共有します。
+
+```bash
+cd cdk
+npm install
+CDK_DOCKER=finch npx cdk deploy McpVpcStack McpEcsApiKeyStack --require-approval never
+```
+
+デプロイ後、API Key を取得:
+
+```bash
+API_KEY_ID=$(aws cloudformation describe-stacks --stack-name McpEcsApiKeyStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`ApiKeyId`].OutputValue' --output text)
+API_KEY=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --include-value --query 'value' --output text)
+MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name McpEcsApiKeyStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`McpEndpoint`].OutputValue' --output text)
+```
+
+API Key ありで接続テスト:
+
+```bash
+curl -s -X POST "$MCP_ENDPOINT" \
+  -H "x-api-key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}'
+```
+
+API Key なしだと `{"message":"Forbidden"}` が返ります。
+API Gateway のアクセスログは CloudWatch Logs の `/aws/apigateway/mcp-server-access` に出力されます。
+
+削除:
+
+```bash
+cd cdk
+npx cdk destroy McpEcsApiKeyStack McpVpcStack
+```
+
 ## Bedrock AgentCore へのデプロイ（CDK）
 
 CDK で Cognito + AgentCore Runtime を一括デプロイできます。
