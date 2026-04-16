@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as cdk from 'aws-cdk-lib/core';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import {
@@ -7,16 +8,22 @@ import {
   AgentRuntimeArtifact,
   ProtocolType,
   RuntimeAuthorizerConfiguration,
+  RuntimeNetworkConfiguration,
 } from '@aws-cdk/aws-bedrock-agentcore-alpha';
 import { Construct } from 'constructs';
+
+export interface AgentCoreStackProps extends cdk.StackProps {
+  readonly vpc?: ec2.IVpc;
+}
 
 /**
  * AgentCore Runtime + Cognito JWT authentication stack
  * - Cognito User Pool with Client Credentials flow
  * - AgentCore Runtime running python-simple-mcp container
+ * - Supports PUBLIC (default) or VPC network mode
  */
 export class AgentCoreStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: AgentCoreStackProps) {
     super(scope, id, props);
 
     // --- Cognito User Pool ---
@@ -56,10 +63,18 @@ export class AgentCoreStack extends cdk.Stack {
     });
 
     // --- AgentCore Runtime ---
+    const networkConfig = props?.vpc
+      ? RuntimeNetworkConfiguration.usingVpc(this, {
+          vpc: props.vpc,
+          vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        })
+      : RuntimeNetworkConfiguration.usingPublicNetwork();
+
     const runtime = new Runtime(this, 'McpRuntime', {
       runtimeName: 'python_simple_mcp',
       description: 'Python Simple MCP Server on AgentCore Runtime',
       protocolConfiguration: ProtocolType.MCP,
+      networkConfiguration: networkConfig,
       authorizerConfiguration: RuntimeAuthorizerConfiguration.usingCognito(
         userPool,
         [client],

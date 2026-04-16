@@ -13,12 +13,19 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION,
 };
 
-// AgentCore Runtime (standalone)
-new AgentCoreStack(app, 'PythonSimpleMcpStack', { env });
+// Shared VPC (used by ECS stacks and optionally by AgentCore)
+const vpcStack = new VpcStack(app, 'McpVpcStack', { env });
+
+// AgentCore Runtime (PUBLIC by default, VPC with -c agentCoreVpc=true)
+const agentCoreVpc = app.node.tryGetContext('agentCoreVpc') === 'true';
+new AgentCoreStack(app, 'PythonSimpleMcpStack', {
+  env,
+  ...(agentCoreVpc ? { vpc: vpcStack.vpc } : {}),
+});
 
 // ECS deployment (VPC + ALB + Fargate)
-const vpcStack = new VpcStack(app, 'McpVpcStack', { env });
-new EcsStack(app, 'McpEcsStack', { env, vpc: vpcStack.vpc });
+const publicAlb = app.node.tryGetContext('publicAlb') !== 'false';
+new EcsStack(app, 'McpEcsStack', { env, vpc: vpcStack.vpc, publicLoadBalancer: publicAlb });
 
 // ECS deployment with API Key auth (API Gateway + VPC Link + internal ALB + Fargate)
 new EcsApiKeyStack(app, 'McpEcsApiKeyStack', { env, vpc: vpcStack.vpc });

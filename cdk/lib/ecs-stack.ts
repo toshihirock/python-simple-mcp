@@ -8,12 +8,14 @@ import { Construct } from 'constructs';
 
 export interface EcsStackProps extends cdk.StackProps {
   readonly vpc: ec2.IVpc;
+  readonly publicLoadBalancer?: boolean;
 }
 
 export class EcsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: EcsStackProps) {
     super(scope, id, props);
 
+    const isPublic = props.publicLoadBalancer ?? true;
     const cluster = new ecs.Cluster(this, 'McpCluster', {
       vpc: props.vpc,
     });
@@ -36,7 +38,7 @@ export class EcsStack extends cdk.Stack {
           MCP_PORT: '80',
         },
       },
-      publicLoadBalancer: true,
+      publicLoadBalancer: isPublic,
       listenerPort: 80,
     });
 

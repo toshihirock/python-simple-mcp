@@ -78,11 +78,18 @@ ECS タスク定義の `image` にアーキテクチャに合ったタグを指�
 ### ECS での利用（CDK）
 
 VPC + ALB + Fargate を CDK でデプロイできます。VPC は別スタックなので他のリソースと共有可能です。
+デフォルトは Public ALB ですが、`-c publicAlb=false` で Internal ALB に変更できます。
+**この方法でデプロイした MCP サーバーは認証機能はないです**
 
 ```bash
 cd cdk
 npm install
+
+# Public ALB（デフォルト）
 CDK_DOCKER=finch npx cdk deploy McpVpcStack McpEcsStack --require-approval never
+
+# Internal ALB
+CDK_DOCKER=finch npx cdk deploy McpVpcStack McpEcsStack --require-approval never -c publicAlb=false
 ```
 
 デプロイ後の確認:
@@ -96,6 +103,13 @@ curl -s -X POST "$MCP_ENDPOINT" \
   -H "Accept: application/json, text/event-stream" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}'
 ```
+
+Internal ALB の場合は、同じ VPC 内からアクセスする必要があります。CloudShell VPC 環境が手軽です:
+
+1. マネコンで CloudShell を開く
+2. Actions → VPC environment を選択
+3. McpVpcStack の VPC とプライベートサブネットを指定して作成
+4. 上記の curl コマンドを実行
 
 削除:
 
@@ -147,11 +161,17 @@ npx cdk destroy McpEcsApiKeyStack McpVpcStack
 ## Bedrock AgentCore へのデプロイ（CDK）
 
 CDK で Cognito + AgentCore Runtime を一括デプロイできます。
+デフォルトは PUBLIC ネットワークですが、`-c agentCoreVpc=true` で VPC 内にデプロイできます。
 
 ```bash
 cd cdk
 npm install
+
+# Public（デフォルト）
 CDK_DOCKER=finch npx cdk deploy PythonSimpleMcpStack --require-approval never
+
+# VPC 内にデプロイ（McpVpcStack も必要）
+CDK_DOCKER=finch npx cdk deploy McpVpcStack PythonSimpleMcpStack --require-approval never -c agentCoreVpc=true
 ```
 
 Docker を使う場合は `CDK_DOCKER=finch` を省略してください。
@@ -189,12 +209,56 @@ npx @modelcontextprotocol/inspector --cli \
   --method tools/list
 ```
 
+curl で接続する場合:
+
+```bash
+curl -s -N -X POST "https://bedrock-agentcore.$(aws configure get region).amazonaws.com/runtimes/${ENCODED_ARN}/invocations?qualifier=DEFAULT" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0.0"}}, "id": 1}'
+```
+
 削除:
 
 ```bash
 cd cdk
 npx cdk destroy PythonSimpleMcpStack
 ```
+
+### DevOps Agent との接続設定
+
+デプロイした AgentCore Runtime を AWS DevOps Agent の MCP サーバーとして接続できます。
+
+1. 接続情報の取得（「デプロイ後、CloudFormation Outputs から接続情報を取得」の環境変数が設定済みの前提）
+
+```bash
+ENCODED_ARN=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${RUNTIME_ARN}', safe=''))")
+ENDPOINT="https://bedrock-agentcore.$(aws configure get region).amazonaws.com/runtimes/${ENCODED_ARN}/invocations?qualifier=DEFAULT"
+
+echo "Endpoint URL:  $ENDPOINT"
+echo "Client ID:     $COGNITO_CLIENT_ID"
+echo "Client Secret: $COGNITO_CLIENT_SECRET"
+echo "Exchange URL:  $COGNITO_TOKEN_ENDPOINT"
+```
+
+2. DevOps Agent コンソールで MCP サーバーを追加
+
+- DevOps Agent コンソールで対象の AgentSpace を選択
+- 「MCP servers」タブを開き「Add MCP server」をクリック
+- 以下の値を入力:
+
+| 設定 | 値 |
+|---|---|
+| Endpoint URL | 上記コマンドで表示された Endpoint URL |
+| Flow | OAuth Client Credentials |
+| Client ID | 上記の Client ID |
+| Client Secret | 上記の Client Secret |
+| Exchange URL | 上記の Exchange URL |
+
+- 「Save」をクリック
+
+VPC 内にデプロイした場合（`-c agentCoreVpc=true`）は、DevOps Agent の AgentSpace から VPC 内の AgentCore Runtime にアクセスできます。
 
 ## Bedrock AgentCore へのデプロイ（CLI）
 
