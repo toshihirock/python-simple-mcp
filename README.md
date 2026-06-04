@@ -1,8 +1,21 @@
-# MCP Server (Docker)
+# python-simple-mcp
 
-MCP (Model Context Protocol) サーバーの Docker コンテナです。
+このリポジトリは、MCP (Model Context Protocol) サーバーを様々な構成で AWS にデプロイするためのサンプルコードです。Docker コンテナのビルドから、認証なし・API Key 認証・OAuth (Cognito) 認証まで段階的に試すことができます。
 
-## ビルドと起動
+## 目次
+
+- [Docker](#docker) — MCP サーバーのビルドとローカル実行
+- [認証なしの MCP サーバー (ALB → ECS Fargate)](#認証なしの-mcp-サーバー-alb--ecs-fargate) — CDK でデプロイ
+- [API Key 認証の MCP サーバー (API Gateway → NLB → ECS Fargate)](#api-key-認証の-mcp-サーバー-api-gateway--nlb--ecs-fargate) — CDK でデプロイ
+- [OAuth (Cognito) 認証の MCP サーバー (Cognito + Bedrock AgentCore)](#oauth-cognito-認証の-mcp-サーバー-cognito--bedrock-agentcore) — CDK でデプロイ
+
+---
+
+## Docker
+
+MCP サーバーの Docker コンテナです。
+
+### ビルドと起動
 
 ```bash
 finch build -t mcp-server .
@@ -51,7 +64,7 @@ curl -s -X POST "http://127.0.0.1:8000/mcp" \
   }'
 ```
 
-## Docker Hub への push（マルチプラットフォーム）
+### Docker Hub への push（マルチプラットフォーム）
 
 Finch では `--push` やマニフェストが使えないため、アーキテクチャごとにビルド・push します。
 
@@ -75,11 +88,15 @@ ECS タスク定義の `image` にアーキテクチャに合ったタグを指�
 | X86_64 | `toshihirock/python-simple-mcp:amd64` |
 | ARM64 | `toshihirock/python-simple-mcp:arm64` |
 
-### ECS での利用（CDK）
+---
+
+## 認証なしの MCP サーバー (ALB → ECS Fargate)
 
 VPC + ALB + Fargate を CDK でデプロイできます。VPC は別スタックなので他のリソースと共有可能です。
 デフォルトは Public ALB ですが、`-c publicAlb=false` で Internal ALB に変更できます。
-**この方法でデプロイした MCP サーバーは認証機能はないです**
+**この方法でデプロイした MCP サーバーは認証機能はないです。**
+
+### デプロイ
 
 ```bash
 cd cdk
@@ -92,7 +109,7 @@ CDK_DOCKER=finch npx cdk deploy McpVpcStack McpEcsStack --require-approval never
 CDK_DOCKER=finch npx cdk deploy McpVpcStack McpEcsStack --require-approval never -c publicAlb=false
 ```
 
-デプロイ後の確認:
+### 動作確認
 
 ```bash
 MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name McpEcsStack \
@@ -111,16 +128,20 @@ Internal ALB の場合は、同じ VPC 内からアクセスする必要があ�
 3. McpVpcStack の VPC とプライベートサブネットを指定して作成
 4. 上記の curl コマンドを実行
 
-削除:
+### 削除
 
 ```bash
 cd cdk
 npx cdk destroy McpEcsStack McpVpcStack
 ```
 
-### ECS + API Key 認証での利用（CDK）
+---
+
+## API Key 認証の MCP サーバー (API Gateway → NLB → ECS Fargate)
 
 API Gateway (REST API) + API Key + NLB + Fargate の構成です。VPC スタックを共有します。
+
+### デプロイ
 
 ```bash
 cd cdk
@@ -128,7 +149,7 @@ npm install
 CDK_DOCKER=finch npx cdk deploy McpVpcStack McpEcsApiKeyStack --require-approval never
 ```
 
-デプロイ後、API Key を取得:
+### 接続情報の取得
 
 ```bash
 API_KEY_ID=$(aws cloudformation describe-stacks --stack-name McpEcsApiKeyStack \
@@ -137,6 +158,8 @@ API_KEY=$(aws apigateway get-api-key --api-key "$API_KEY_ID" --include-value --q
 MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name McpEcsApiKeyStack \
   --query 'Stacks[0].Outputs[?OutputKey==`McpEndpoint`].OutputValue' --output text)
 ```
+
+### 動作確認
 
 API Key ありで接続テスト:
 
@@ -151,17 +174,47 @@ curl -s -X POST "$MCP_ENDPOINT" \
 API Key なしだと `{"message":"Forbidden"}` が返ります。
 API Gateway のアクセスログは CloudWatch Logs の `/aws/apigateway/mcp-server-access` に出力されます。
 
-削除:
+### DevOps Agent との接続設定
+
+デプロイした API Key 認証の MCP サーバーを AWS DevOps Agent の MCP サーバーとして接続できます。
+
+1. 接続情報の取得（上記の環境変数が設定済みの前提）
+
+```bash
+echo "Endpoint URL:  $MCP_ENDPOINT"
+echo "API Key:       $API_KEY"
+```
+
+2. DevOps Agent コンソールで MCP サーバーを追加
+
+- DevOps Agent コンソールで対象の AgentSpace を選択
+- 「MCP servers」タブを開き「Add MCP server」をクリック
+- 以下の値を入力:
+
+| 設定 | 値 |
+|---|---|
+| Endpoint URL | 上記コマンドで表示された Endpoint URL |
+| Flow | API Key |
+| API Key Header Name | `x-api-key` |
+| API Key | 上記の API Key |
+
+- 「Save」をクリック
+
+### 削除
 
 ```bash
 cd cdk
 npx cdk destroy McpEcsApiKeyStack McpVpcStack
 ```
 
-## Bedrock AgentCore へのデプロイ（CDK）
+---
+
+## OAuth (Cognito) 認証の MCP サーバー (Cognito + Bedrock AgentCore)
 
 CDK で Cognito + AgentCore Runtime を一括デプロイできます。
 デフォルトは PUBLIC ネットワークですが、`-c agentCoreVpc=true` で VPC 内にデプロイできます。
+
+### デプロイ
 
 ```bash
 cd cdk
@@ -176,7 +229,7 @@ CDK_DOCKER=finch npx cdk deploy McpVpcStack PythonSimpleMcpStack --require-appro
 
 Docker を使う場合は `CDK_DOCKER=finch` を省略してください。
 
-デプロイ後、CloudFormation Outputs から接続情報を取得:
+### 接続情報の取得
 
 ```bash
 export COGNITO_TOKEN_ENDPOINT=$(aws cloudformation describe-stacks --stack-name PythonSimpleMcpStack \
@@ -191,6 +244,8 @@ export COGNITO_CLIENT_SECRET=$(aws cognito-idp describe-user-pool-client \
 export RUNTIME_ARN=$(aws cloudformation describe-stacks --stack-name PythonSimpleMcpStack \
   --query 'Stacks[0].Outputs[?OutputKey==`RuntimeArn`].OutputValue' --output text)
 ```
+
+### 動作確認
 
 トークン取得と接続テスト:
 
@@ -219,18 +274,11 @@ curl -s -N -X POST "https://bedrock-agentcore.$(aws configure get region).amazon
   -d '{"jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0.0"}}, "id": 1}'
 ```
 
-削除:
-
-```bash
-cd cdk
-npx cdk destroy PythonSimpleMcpStack
-```
-
 ### DevOps Agent との接続設定
 
 デプロイした AgentCore Runtime を AWS DevOps Agent の MCP サーバーとして接続できます。
 
-1. 接続情報の取得（「デプロイ後、CloudFormation Outputs から接続情報を取得」の環境変数が設定済みの前提）
+1. 接続情報の取得（上記の環境変数が設定済みの前提）
 
 ```bash
 ENCODED_ARN=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${RUNTIME_ARN}', safe=''))")
@@ -260,9 +308,16 @@ echo "Exchange URL:  $COGNITO_TOKEN_ENDPOINT"
 
 VPC 内にデプロイした場合（`-c agentCoreVpc=true`）は、DevOps Agent の AgentSpace から VPC 内の AgentCore Runtime にアクセスできます。
 
-## Bedrock AgentCore へのデプロイ（CLI）
+### 削除
 
-### 1. ECR に ARM64 イメージを push
+```bash
+cd cdk
+npx cdk destroy PythonSimpleMcpStack
+```
+
+### CDK を使わず手動で構築する場合 (CLI)
+
+#### 1. ECR に ARM64 イメージを push
 
 AgentCore Runtime は ARM64 コンテナが必須です。
 
@@ -274,9 +329,9 @@ aws ecr get-login-password --region <REGION> | finch login --username AWS --pass
 finch push <ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/<REPO>:latest
 ```
 
-### 2. Cognito User Pool のセットアップ
+#### 2. Cognito User Pool のセットアップ
 
-#### User Pool とドメインの作成
+##### User Pool とドメインの作成
 
 ```bash
 POOL_ID=$(aws cognito-idp create-user-pool \
@@ -290,7 +345,7 @@ aws cognito-idp create-user-pool-domain \
   --region <REGION>
 ```
 
-#### リソースサーバーの作成（client_credentials フロー用）
+##### リソースサーバーの作成（client_credentials フロー用）
 
 ```bash
 aws cognito-idp create-resource-server \
@@ -301,7 +356,7 @@ aws cognito-idp create-resource-server \
   --region <REGION>
 ```
 
-#### クライアントの作成
+##### クライアントの作成
 
 2 種類のクライアントを作成できます。
 
@@ -343,7 +398,7 @@ aws cognito-idp admin-set-user-password \
   --region <REGION>
 ```
 
-### 3. AgentCore Runtime の作成
+#### 3. AgentCore Runtime の作成
 
 `allowedClients` に使用するクライアント ID を指定します。
 両方のフローを使う場合は両方のクライアント ID を含めてください。
@@ -365,9 +420,9 @@ aws bedrock-agentcore-control create-agent-runtime \
   }'
 ```
 
-### 4. トークン取得と接続
+#### 4. トークン取得と接続
 
-#### client_credentials フロー
+##### client_credentials フロー
 
 ```bash
 TOKEN=$(curl -s -X POST "https://mcp-<ACCOUNT_ID>.auth.<REGION>.amazoncognito.com/oauth2/token" \
@@ -376,7 +431,7 @@ TOKEN=$(curl -s -X POST "https://mcp-<ACCOUNT_ID>.auth.<REGION>.amazoncognito.co
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 ```
 
-#### USER_PASSWORD_AUTH フロー
+##### USER_PASSWORD_AUTH フロー
 
 ```bash
 TOKEN=$(aws cognito-idp initiate-auth \
@@ -388,7 +443,7 @@ TOKEN=$(aws cognito-idp initiate-auth \
   --output text)
 ```
 
-#### MCP Inspector で接続
+##### MCP Inspector で接続
 
 ```bash
 ENCODED_ARN=$(python3 -c "import urllib.parse; print(urllib.parse.quote('<RUNTIME_ARN>', safe=''))")
@@ -400,7 +455,7 @@ npx @modelcontextprotocol/inspector --cli \
   --method tools/list
 ```
 
-#### curl で接続
+##### curl で接続
 
 ```bash
 curl -s -N -X POST "https://bedrock-agentcore.<REGION>.amazonaws.com/runtimes/${ENCODED_ARN}/invocations?qualifier=DEFAULT" \
