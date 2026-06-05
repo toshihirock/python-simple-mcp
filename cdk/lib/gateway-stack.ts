@@ -92,7 +92,7 @@ export class GatewayStack extends cdk.Stack {
             'aws:SourceAccount': this.account,
           },
           ArnLike: {
-            'aws:SourceArn': `arn:aws:aidevops:*:${this.account}:service/*`,
+            'aws:SourceArn': `arn:aws:aidevops:${this.region}:${this.account}:service/*`,
           },
         },
       }),
