@@ -7,6 +7,7 @@
 - [Docker](#docker) — MCP サーバーのビルドとローカル実行
 - [認証なしの MCP サーバー (ALB → ECS Fargate)](#認証なしの-mcp-サーバー-alb--ecs-fargate) — CDK でデプロイ
 - [API Key 認証の MCP サーバー (API Gateway → NLB → ECS Fargate)](#api-key-認証の-mcp-サーバー-api-gateway--nlb--ecs-fargate) — CDK でデプロイ
+- [AgentCore Gateway (SigV4/IAM) + Lambda](#agentcore-gateway-sigv4iam--lambda) — CDK でデプロイ（Cognito 不要）
 - [OAuth (Cognito) 認証の MCP サーバー (Cognito + Bedrock AgentCore)](#oauth-cognito-認証の-mcp-サーバー-cognito--bedrock-agentcore) — CDK でデプロイ
 
 ---
@@ -205,6 +206,110 @@ echo "API Key:       $API_KEY"
 ```bash
 cd cdk
 npx cdk destroy McpEcsApiKeyStack McpVpcStack
+```
+
+---
+
+## AgentCore Gateway (SigV4/IAM) + Lambda
+
+AgentCore Gateway + Lambda の構成です。Cognito 不要で、IAM (SigV4) 認証のみで MCP エンドポイントを公開します。
+Lambda 関数がツールの実行を担い、Gateway が MCP プロトコルを代行します。
+
+### デプロイ
+
+```bash
+cd cdk
+npm install
+CDK_DOCKER=finch npx cdk deploy McpGatewayStack --require-approval never
+```
+
+### 接続情報の取得
+
+```bash
+MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name McpGatewayStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`GatewayEndpoint`].OutputValue' --output text)
+echo "MCP Endpoint: $MCP_ENDPOINT"
+```
+
+### 動作確認
+
+SigV4 署名が必要なため `awscurl` を Docker (finch) 経由で使います。
+`~/.aws` をマウントすることで、ローカルの認証情報をそのまま使えます。
+
+```bash
+REGION=$(aws configure get region)
+
+# tools/list
+docker run --rm -v ~/.aws:/root/.aws \
+  okigan/awscurl \
+  --service bedrock-agentcore --region $REGION \
+  -X POST "$MCP_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}'
+```
+
+```bash
+# tools/call
+docker run --rm -v ~/.aws:/root/.aws \
+  okigan/awscurl \
+  --service bedrock-agentcore --region $REGION \
+  -X POST "$MCP_ENDPOINT" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {"name": "mcp-tools___add_numbers", "arguments": {"a": 3, "b": 5}},
+    "id": 2
+  }'
+```
+
+Finch を使っている場合は `docker` を `finch` に置き換えてください。
+
+ツール名は `{target_name}___{tool_name}` の形式です（例: `mcp-tools___add_numbers`）。
+
+### DevOps Agent との接続設定
+
+デプロイした AgentCore Gateway を AWS DevOps Agent の MCP サーバーとして接続できます。
+CDK デプロイ時に DevOps Agent 用 IAM Role も自動作成されます。
+
+1. 接続情報の取得
+
+```bash
+MCP_ENDPOINT=$(aws cloudformation describe-stacks --stack-name McpGatewayStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`GatewayEndpoint`].OutputValue' --output text)
+DEVOPS_AGENT_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name McpGatewayStack \
+  --query 'Stacks[0].Outputs[?OutputKey==`DevOpsAgentRoleArn`].OutputValue' --output text)
+REGION=$(aws configure get region)
+
+echo "Endpoint URL:        $MCP_ENDPOINT"
+echo "IAM Role ARN:        $DEVOPS_AGENT_ROLE_ARN"
+echo "Region:              $REGION"
+echo "Service Name:        bedrock-agentcore"
+```
+
+2. DevOps Agent コンソールで MCP サーバーを追加
+
+- DevOps Agent コンソールの「Capability Providers」で「MCP Server」を「Register」
+- 以下の値を入力:
+
+| 設定 | 値 |
+|---|---|
+| Name | 任意の名前（例: python-simple-mcp-gateway） |
+| Endpoint URL | 上記コマンドで表示された Endpoint URL |
+| Authorization Flow | AWS SigV4 |
+| IAM Role | 上記の IAM Role ARN |
+| AWS Region | 上記の Region |
+| Service Name | `bedrock-agentcore` |
+
+- 「Submit」をクリック
+
+### 削除
+
+```bash
+cd cdk
+npx cdk destroy McpGatewayStack
 ```
 
 ---

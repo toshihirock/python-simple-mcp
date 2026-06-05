@@ -5,6 +5,7 @@ import { AgentCoreStack } from '../lib/agentcore-stack';
 import { VpcStack } from '../lib/vpc-stack';
 import { EcsStack } from '../lib/ecs-stack';
 import { EcsApiKeyStack } from '../lib/ecs-apikey-stack';
+import { GatewayStack } from '../lib/gateway-stack';
 
 const app = new cdk.App();
 
@@ -29,3 +30,6 @@ new EcsStack(app, 'McpEcsStack', { env, vpc: vpcStack.vpc, publicLoadBalancer: p
 
 // ECS deployment with API Key auth (API Gateway + VPC Link + internal ALB + Fargate)
 new EcsApiKeyStack(app, 'McpEcsApiKeyStack', { env, vpc: vpcStack.vpc });
+
+// AgentCore Gateway (SigV4/IAM) + Lambda
+new GatewayStack(app, 'McpGatewayStack', { env });

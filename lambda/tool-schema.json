@@ -1,0 +1,52 @@
+[
+  {
+    "name": "add_numbers",
+    "description": "Add two numbers together",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "integer",
+          "description": "First number"
+        },
+        "b": {
+          "type": "integer",
+          "description": "Second number"
+        }
+      },
+      "required": ["a", "b"]
+    }
+  },
+  {
+    "name": "multiply_numbers",
+    "description": "Multiply two numbers together",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "integer",
+          "description": "First number"
+        },
+        "b": {
+          "type": "integer",
+          "description": "Second number"
+        }
+      },
+      "required": ["a", "b"]
+    }
+  },
+  {
+    "name": "greet_user",
+    "description": "Greet a user by name",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the user to greet"
+        }
+      },
+      "required": ["name"]
+    }
+  }
+]
